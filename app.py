@@ -63,8 +63,11 @@ try:
         if target_dummy_col in input_data.columns:
             input_data[target_dummy_col] = 1
             
-        # 5. Eksekusi Prediksi AI
+       # 5. Eksekusi Prediksi AI
         prediksi_log = model.predict(input_data)
+        
+        # TAMPILKAN ANGKA ASLI UNTUK DEBUNGIN / PELACAKAN ERROR
+        st.write(f"🔍 [DEBUG] Angka mentah dari model AI: {prediksi_log[0]}")
         
         # KUNCI UTAMA: Balikkan nilai logaritma ke mata uang asli memakai np.exp()
         harga_final = np.exp(prediksi_log[0])
@@ -72,7 +75,6 @@ try:
         # 6. Tampilkan Hasil Ke Layar
         st.markdown("---")
         st.success(f"### 🎉 Hasil Valuasi AI: **${harga_final:,.2f}**")
-        st.caption("Catatan: Prediksi ini dihitung menggunakan akurasi model final sebesar 94.56% berdasarkan parameter spasial.")
 
 except FileNotFoundError:
     st.error("Gagal memuat sistem. Pastikan file 'model_harga_properti.pkl' dan 'daftar_fitur.pkl' sudah diletakkan di folder yang sama.")
