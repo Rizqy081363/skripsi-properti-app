@@ -9,6 +9,7 @@ st.set_page_config(page_title="Valuasi Properti AI", layout="centered")
 st.title("🏠 Sistem Prediksi Harga Properti berbasis AI")
 st.write("Aplikasi valas massal menggunakan algoritma Multiple Linear Regression & Spatial Features")
 st.markdown("---")
+st.write("🔍 [DEBUG] Daftar Kolom Asli dari Model Colab:", features_final)
 
 # 2. Memuat Model dan Daftar Fitur dari Colab
 @st.cache_resource
