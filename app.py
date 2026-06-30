@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import joblib
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.express as px
 
 # ============================================================
 # 1. KONFIGURASI HALAMAN
@@ -215,29 +217,20 @@ st.markdown("""
         color: #C9A84C;
         margin-bottom: 0.5rem;
     }
-    /* Harga: flex layout supaya simbol $ dan angka tidak dempet */
     .result-price {
         font-family: 'Playfair Display', serif;
-        font-size: clamp(2.6rem, 5.4vw, 4.2rem);
+        font-size: clamp(2.8rem, 6vw, 4.5rem);
         font-weight: 900;
         color: #F0EDE8;
-        letter-spacing: 0px;
+        letter-spacing: -1px;
         line-height: 1;
-        margin: 0.5rem 0 0.7rem;
-        display: flex;
-        align-items: baseline;
-        justify-content: center;
-        gap: 0.35rem;
-        flex-wrap: wrap;
-        word-break: keep-all;
+        margin: 0.3rem 0 0.6rem;
     }
     .result-price .currency {
-        font-size: 0.42em;
+        font-size: 0.45em;
         color: #C9A84C;
+        vertical-align: super;
         font-weight: 700;
-    }
-    .result-price .amount {
-        white-space: nowrap;
     }
     .result-sub {
         font-size: 0.83rem;
@@ -330,31 +323,6 @@ st.markdown("""
         overflow: hidden;
     }
 
-    /* ── DRIVER PANEL ── */
-    .driver-panel {
-        background: linear-gradient(145deg, rgba(20,30,48,0.75) 0%, rgba(10,16,28,0.9) 100%);
-        border: 1px solid rgba(255,255,255,0.07);
-        border-radius: 18px;
-        padding: 1.4rem 1.6rem 0.6rem;
-    }
-    .driver-panel-up { border-color: rgba(46,196,141,0.25); }
-    .driver-panel-down { border-color: rgba(224,90,90,0.25); }
-    .driver-title {
-        font-family: 'Inter', sans-serif;
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        margin-bottom: 0.2rem;
-    }
-    .driver-title-up { color: #2EC48D; }
-    .driver-title-down { color: #E05A5A; }
-    .driver-sub {
-        font-size: 0.75rem;
-        color: #5E7A94;
-        margin-bottom: 0.6rem;
-    }
-
     /* ── FOOTER ── */
     .footer-bar {
         text-align: center;
@@ -392,39 +360,167 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# 3. MEMUAT MODEL & ASET
+# 3. FUNGSI UNTUK FEATURE IMPORTANCE
+# ============================================================
+def get_feature_importance(model, feature_names):
+    """Menghitung feature importance dari koefisien regresi"""
+    coefs = model.coef_
+    feature_importance = pd.DataFrame({
+        'fitur': feature_names,
+        'koefisien': coefs,
+        'absolute': np.abs(coefs)
+    })
+    feature_importance = feature_importance.sort_values('absolute', ascending=False)
+    feature_importance['persentase'] = (feature_importance['absolute'] / feature_importance['absolute'].sum()) * 100
+    return feature_importance
+
+def create_feature_impact_chart(feature_imp, top_n=10):
+    """Membuat visualisasi feature impact naik dan turun"""
+    # Pisahkan fitur yang positif (naik) dan negatif (turun)
+    pos_features = feature_imp[feature_imp['koefisien'] > 0].head(top_n)
+    neg_features = feature_imp[feature_imp['koefisien'] < 0].head(top_n)
+    
+    # Buat subplot
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=(
+            f'<span style="color:#00C853;font-weight:700">⬆ 10 Fitur Pendorong Kenaikan</span>',
+            f'<span style="color:#FF1744;font-weight:700">⬇ 10 Fitur Pendorong Penurunan</span>'
+        ),
+        specs=[[{'type': 'bar'}, {'type': 'bar'}]]
+    )
+    
+    # Warna gradient
+    colors_pos = ['#00C853', '#00E676', '#69F0AE', '#B9F6CA', '#E8F5E9']
+    colors_neg = ['#FF1744', '#FF5252', '#FF8A80', '#FFAB91', '#FFCCBC']
+    
+    # Tambahkan bar chart untuk fitur positif
+    fig.add_trace(
+        go.Bar(
+            y=pos_features['fitur'][:10][::-1],
+            x=pos_features['koefisien'][:10][::-1],
+            orientation='h',
+            marker=dict(
+                color=pos_features['koefisien'][:10][::-1],
+                colorscale='Greens',
+                showscale=False,
+                line=dict(color='rgba(0,200,83,0.3)', width=1)
+            ),
+            text=pos_features['persentase'][:10][::-1].round(1).astype(str) + '%',
+            textposition='outside',
+            textfont=dict(color='#A5D6A7', size=10),
+            hovertemplate='<b>%{y}</b><br>Koefisien: %{x:,.2f}<br>Kontribusi: %{text}<extra></extra>'
+        ),
+        row=1, col=1
+    )
+    
+    # Tambahkan bar chart untuk fitur negatif
+    fig.add_trace(
+        go.Bar(
+            y=neg_features['fitur'][:10][::-1],
+            x=neg_features['koefisien'][:10][::-1],
+            orientation='h',
+            marker=dict(
+                color=neg_features['koefisien'][:10][::-1],
+                colorscale='Reds',
+                showscale=False,
+                line=dict(color='rgba(255,23,68,0.3)', width=1)
+            ),
+            text=neg_features['persentase'][:10][::-1].round(1).astype(str) + '%',
+            textposition='outside',
+            textfont=dict(color='#EF9A9A', size=10),
+            hovertemplate='<b>%{y}</b><br>Koefisien: %{x:,.2f}<br>Kontribusi: %{text}<extra></extra>'
+        ),
+        row=1, col=2
+    )
+    
+    # Update layout
+    fig.update_layout(
+        height=500,
+        template='plotly_dark',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(family='Inter, sans-serif', color='#9EB3C8'),
+        showlegend=False,
+        margin=dict(l=20, r=20, t=60, b=20),
+        hoverlabel=dict(
+            bgcolor='rgba(7,14,26,0.95)',
+            font_size=12,
+            font_family='Inter, sans-serif'
+        )
+    )
+    
+    # Update axes
+    fig.update_xaxes(
+        title_text="Koefisien Model",
+        title_font=dict(size=12, color='#7A8FA6'),
+        gridcolor='rgba(255,255,255,0.05)',
+        zerolinecolor='rgba(255,255,255,0.1)',
+        showgrid=True,
+        tickfont=dict(color='#7A8FA6')
+    )
+    
+    fig.update_yaxes(
+        title_font=dict(size=12, color='#7A8FA6'),
+        gridcolor='rgba(255,255,255,0.05)',
+        showgrid=True,
+        tickfont=dict(color='#7A8FA6')
+    )
+    
+    return fig
+
+def create_radar_chart(feature_imp, top_n=8):
+    """Membuat radar chart untuk fitur paling impact"""
+    top_features = feature_imp.head(top_n)
+    
+    # Normalisasi untuk radar chart
+    max_abs = top_features['absolute'].max()
+    normalized = (top_features['absolute'] / max_abs) * 100
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatterpolar(
+        r=normalized,
+        theta=top_features['fitur'],
+        fill='toself',
+        name='Feature Impact',
+        line=dict(color='#C9A84C', width=2),
+        fillcolor='rgba(201,168,76,0.2)',
+        hoverinfo='text',
+        text=[f'{f}: {i:.1f}% impact' for f, i in zip(top_features['fitur'], normalized)],
+        hovertemplate='%{text}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                gridcolor='rgba(255,255,255,0.1)',
+                tickfont=dict(color='#7A8FA6'),
+                tickvals=[0, 25, 50, 75, 100],
+                ticktext=['0%', '25%', '50%', '75%', '100%']
+            ),
+            angularaxis=dict(
+                tickfont=dict(color='#9EB3C8', size=10),
+                gridcolor='rgba(255,255,255,0.05)'
+            ),
+            bgcolor='rgba(0,0,0,0)'
+        ),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(family='Inter, sans-serif', color='#9EB3C8'),
+        height=400,
+        margin=dict(l=60, r=60, t=20, b=20)
+    )
+    
+    return fig
+
+# ============================================================
+# 4. MEMUAT MODEL & ASET
 # ============================================================
 MODEL_R2   = 0.9457
 MODEL_NAME = "Multiple Linear Regression + Spatial & Log-Price Feature Engineering"
-
-# Mapping nama fitur teknis -> label yang enak dibaca di grafik
-FEATURE_LABELS = {
-    "SqFtTotLiving":    "Luas Ruang Tamu (SqFt)",
-    "Bedrooms":         "Jumlah Kamar Tidur",
-    "Bathrooms":        "Jumlah Kamar Mandi",
-    "BldgGrade":        "Kualitas Konstruksi (Grade)",
-    "HouseAge":         "Umur Bangunan",
-    "dist_to_park":     "Jarak ke Taman",
-    "dist_to_school":   "Jarak ke Sekolah",
-    "dist_to_hospital": "Jarak ke Rumah Sakit",
-    "Space_Quality":    "Interaksi Luas × Grade",
-    "SqFtLot":          "Luas Lahan",
-    "NbrLivingUnits":   "Jumlah Unit Hunian",
-    "LandVal":          "Nilai Tanah",
-    "ImpsVal":          "Nilai Bangunan",
-    "zhvi_px":          "Indeks Harga Zona (ZHVI)",
-    "AdjSalePrice":     "Harga Jual Acuan",
-    "lat":              "Latitude",
-    "lon":              "Longitude",
-    "ZIPCODE":          "Kode Pos",
-}
-
-def pretty_feature_name(col: str) -> str:
-    if col in FEATURE_LABELS:
-        return FEATURE_LABELS[col]
-    if col.startswith("ZipCode_"):
-        return f"Wilayah ZipCode {col.replace('ZipCode_', '')}"
-    return col.replace("_", " ").title()
 
 @st.cache_resource
 def load_assets():
@@ -438,12 +534,14 @@ try:
     all_zipcodes = sorted([
         col.replace("ZipCode_", "") for col in features_final if col.startswith("ZipCode_")
     ])
+    # Simpan feature importance untuk digunakan
+    feature_importance = get_feature_importance(model, features_final)
 except Exception as e:
     assets_ready = False
     load_error   = e
 
 # ============================================================
-# 4. HERO HEADER
+# 5. HERO HEADER
 # ============================================================
 st.markdown("""
 <div class="hero-wrap">
@@ -471,7 +569,7 @@ if not assets_ready:
     st.stop()
 
 # ============================================================
-# 5. SIDEBAR
+# 6. SIDEBAR
 # ============================================================
 with st.sidebar:
     st.markdown("### PropVault AI")
@@ -502,7 +600,7 @@ with st.sidebar:
     st.caption("Dibuat sebagai proyek penelitian valuasi properti berbasis machine learning.")
 
 # ============================================================
-# 6. FORM INPUT
+# 7. FORM INPUT
 # ============================================================
 st.markdown('<div class="gold-divider"></div>', unsafe_allow_html=True)
 st.markdown('<p class="section-label">🏗 &nbsp;Atribut Fisik Bangunan</p>', unsafe_allow_html=True)
@@ -540,7 +638,7 @@ predict_clicked = st.button(
 )
 
 # ============================================================
-# 7. PREDIKSI
+# 8. PREDIKSI & VISUALISASI
 # ============================================================
 if predict_clicked:
     with st.spinner("Menghitung valuasi properti …"):
@@ -576,8 +674,7 @@ if predict_clicked:
             input_data[target_dummy] = 1
 
         try:
-            log_pred    = model.predict(input_data)[0]
-            harga_final = np.exp(log_pred)
+            harga_final = np.exp(model.predict(input_data)[0])
 
             # ── Stat cards ──
             st.markdown('<div class="gold-divider"></div>', unsafe_allow_html=True)
@@ -601,13 +698,13 @@ if predict_clicked:
                         unsafe_allow_html=True,
                     )
 
-            # ── Result box (harga jelas, tidak dempet) ──
+            # ── Result box ──
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown(
                 f"""<div class="result-box">
                     <p class="result-eyebrow">◉ &nbsp;Estimasi Valuasi Properti</p>
                     <p class="result-price">
-                        <span class="currency">$</span><span class="amount">{harga_final:,.0f}</span>
+                        <span class="currency">$</span>{harga_final:,.0f}
                     </p>
                     <p class="result-sub">
                         Kalkulasi berbasis regresi spasial · King County, Washington
@@ -617,114 +714,111 @@ if predict_clicked:
                 unsafe_allow_html=True,
             )
 
-            # ============================================================
-            # 7b. GRAFIK PENDORONG HARGA (Top 10 Naik vs Top 10 Turun)
-            # ============================================================
-            if hasattr(model, "coef_"):
-                coefs = np.asarray(model.coef_).ravel()
-                x_vals = input_data.iloc[0].values.astype(float)
-
-                # Kontribusi setiap fitur terhadap log(harga): coef * nilai input
-                contrib = coefs * x_vals
-                contrib_df = pd.DataFrame({
-                    "feature": features_final,
-                    "contribution": contrib,
-                }).query("feature != @target_dummy or feature == @target_dummy")  # keep all
-                # Buang fitur ZipCode_ lain yang nilainya 0 (tidak relevan utk properti ini)
-                contrib_df = contrib_df[
-                    (~contrib_df["feature"].str.startswith("ZipCode_")) |
-                    (contrib_df["feature"] == target_dummy)
-                ]
-                contrib_df = contrib_df[contrib_df["contribution"] != 0]
-                contrib_df["label"] = contrib_df["feature"].apply(pretty_feature_name)
-                contrib_df["pct_impact"] = (np.exp(contrib_df["contribution"]) - 1) * 100
-
-                top_up   = contrib_df.sort_values("contribution", ascending=False).head(10)
-                top_down = contrib_df.sort_values("contribution", ascending=True).head(10)
-
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown('<div class="gold-divider"></div>', unsafe_allow_html=True)
-                st.markdown('<p class="section-label">⚡ &nbsp;Faktor Pendorong Harga</p>', unsafe_allow_html=True)
-                st.caption(
-                    "Estimasi dampak tiap fitur terhadap harga akhir, dihitung dari kontribusinya "
-                    "pada model (koefisien × nilai input pada skala log-harga)."
+            # ── FEATURE IMPACT VISUALIZATION ──
+            st.markdown('<div class="gold-divider"></div>', unsafe_allow_html=True)
+            st.markdown('<p class="section-label">📊 &nbsp;Analisis Dampak Fitur Terhadap Harga</p>', unsafe_allow_html=True)
+            
+            # Filter fitur yang relevan (bukan dummies)
+            relevant_features = feature_importance[
+                ~feature_importance['fitur'].str.startswith('ZipCode_')
+            ].head(20)
+            
+            # Tabs untuk berbagai visualisasi
+            tab1, tab2, tab3 = st.tabs([
+                "⬆⬇ 10 Fitur Paling Berpengaruh",
+                "🎯 Radar Impact Analysis",
+                "📈 Distribusi Kontribusi"
+            ])
+            
+            with tab1:
+                # Bar chart naik dan turun
+                fig_bar = create_feature_impact_chart(relevant_features, top_n=10)
+                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+                
+                # Detail table
+                with st.expander("📋 Detail Koefisien & Kontribusi"):
+                    col1_tab, col2_tab = st.columns(2)
+                    
+                    with col1_tab:
+                        st.markdown("### ⬆ Pendorong Kenaikan Harga")
+                        top_pos = relevant_features[relevant_features['koefisien'] > 0].head(10)
+                        st.dataframe(
+                            top_pos[['fitur', 'koefisien', 'persentase']].style.format({
+                                'koefisien': '{:,.2f}',
+                                'persentase': '{:.1f}%'
+                            }),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    
+                    with col2_tab:
+                        st.markdown("### ⬇ Pendorong Penurunan Harga")
+                        top_neg = relevant_features[relevant_features['koefisien'] < 0].head(10)
+                        st.dataframe(
+                            top_neg[['fitur', 'koefisien', 'persentase']].style.format({
+                                'koefisien': '{:,.2f}',
+                                'persentase': '{:.1f}%'
+                            }),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+            
+            with tab2:
+                # Radar chart
+                fig_radar = create_radar_chart(relevant_features, top_n=8)
+                st.plotly_chart(fig_radar, use_container_width=True, config={'displayModeBar': False})
+                
+                st.caption("📌 Radar chart menunjukkan 8 fitur dengan impact terbesar terhadap harga properti")
+            
+            with tab3:
+                # Donut chart untuk distribusi kontribusi
+                top_10 = relevant_features.head(10)
+                others = pd.DataFrame({
+                    'fitur': ['Fitur Lainnya'],
+                    'persentase': [relevant_features.iloc[10:]['persentase'].sum()],
+                    'koefisien': [0]
+                })
+                
+                all_data = pd.concat([top_10, others], ignore_index=True)
+                
+                fig_donut = go.Figure()
+                fig_donut.add_trace(go.Pie(
+                    labels=all_data['fitur'],
+                    values=all_data['persentase'],
+                    hole=0.4,
+                    textinfo='label+percent',
+                    textposition='auto',
+                    marker=dict(
+                        colors=['#C9A84C', '#00C853', '#FF1744', '#2979FF', '#FF9100',
+                               '#AB47BC', '#00BCD4', '#FF4081', '#4CAF50', '#FF5722', '#7A8FA6'],
+                        line=dict(color='rgba(0,0,0,0)', width=0)
+                    ),
+                    hovertemplate='<b>%{label}</b><br>Kontribusi: %{percent:.1%}<br>Impact Score: %{value:.1f}<extra></extra>',
+                    textfont=dict(size=11, color='#F0EDE8')
+                ))
+                
+                fig_donut.update_layout(
+                    height=500,
+                    template='plotly_dark',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font=dict(family='Inter, sans-serif', color='#9EB3C8'),
+                    margin=dict(l=20, r=20, t=20, b=20),
+                    showlegend=False,
+                    annotations=[{
+                        'text': 'Distribusi<br>Kontribusi Fitur',
+                        'x': 0.5, 'y': 0.5,
+                        'font': dict(size=14, color='#C9A84C', family='Playfair Display'),
+                        'showarrow': False
+                    }]
                 )
-
-                gcol1, gcol2 = st.columns(2, gap="large")
-
-                with gcol1:
-                    st.markdown(
-                        '<div class="driver-panel driver-panel-up">'
-                        '<p class="driver-title driver-title-up">▲ &nbsp;Top 10 Pendorong Harga Naik</p>'
-                        '<p class="driver-sub">Fitur dengan kontribusi positif terbesar</p>'
-                        '</div>', unsafe_allow_html=True
-                    )
-                    fig_up = go.Figure(go.Bar(
-                        x=top_up["pct_impact"][::-1],
-                        y=top_up["label"][::-1],
-                        orientation="h",
-                        marker=dict(
-                            color=top_up["pct_impact"][::-1],
-                            colorscale=[[0, "#1B6B4F"], [1, "#2EC48D"]],
-                        ),
-                        text=[f"+{v:.1f}%" for v in top_up["pct_impact"][::-1]],
-                        textposition="outside",
-                        textfont=dict(color="#2EC48D", size=12),
-                        hovertemplate="%{y}<br>Dampak: +%{x:.2f}%<extra></extra>",
-                    ))
-                    fig_up.update_layout(
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        font=dict(family="Inter, sans-serif", color="#9EB3C8", size=12),
-                        margin=dict(l=10, r=40, t=10, b=10),
-                        height=420,
-                        xaxis=dict(title="Dampak terhadap harga (%)", gridcolor="rgba(255,255,255,0.06)", zeroline=False),
-                        yaxis=dict(gridcolor="rgba(255,255,255,0.03)"),
-                        showlegend=False,
-                    )
-                    st.plotly_chart(fig_up, use_container_width=True, config={"displayModeBar": False})
-
-                with gcol2:
-                    st.markdown(
-                        '<div class="driver-panel driver-panel-down">'
-                        '<p class="driver-title driver-title-down">▼ &nbsp;Top 10 Pendorong Harga Turun</p>'
-                        '<p class="driver-sub">Fitur dengan kontribusi negatif terbesar</p>'
-                        '</div>', unsafe_allow_html=True
-                    )
-                    fig_down = go.Figure(go.Bar(
-                        x=top_down["pct_impact"][::-1],
-                        y=top_down["label"][::-1],
-                        orientation="h",
-                        marker=dict(
-                            color=top_down["pct_impact"][::-1],
-                            colorscale=[[0, "#E05A5A"], [1, "#7A2424"]],
-                        ),
-                        text=[f"{v:.1f}%" for v in top_down["pct_impact"][::-1]],
-                        textposition="outside",
-                        textfont=dict(color="#E05A5A", size=12),
-                        hovertemplate="%{y}<br>Dampak: %{x:.2f}%<extra></extra>",
-                    ))
-                    fig_down.update_layout(
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        font=dict(family="Inter, sans-serif", color="#9EB3C8", size=12),
-                        margin=dict(l=10, r=40, t=10, b=10),
-                        height=420,
-                        xaxis=dict(title="Dampak terhadap harga (%)", gridcolor="rgba(255,255,255,0.06)", zeroline=False),
-                        yaxis=dict(gridcolor="rgba(255,255,255,0.03)"),
-                        showlegend=False,
-                    )
-                    st.plotly_chart(fig_down, use_container_width=True, config={"displayModeBar": False})
-
-                st.caption(
-                    "ℹ Persentase dampak dihitung relatif terhadap model dalam skala log-harga "
-                    "(exp(koefisien × nilai) − 1) × 100%, bukan kontribusi nominal langsung dalam Dolar."
-                )
-            else:
-                st.info("Model tidak menyediakan koefisien (coef_), grafik pendorong harga tidak dapat ditampilkan.")
+                
+                st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
+                
+                st.caption("📊 Distribusi kontribusi fitur terhadap model prediksi harga")
 
             st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander("🔍 Inspeksi Fitur Model"):
+            with st.expander("🔍 Inspeksi Fitur Model & Input"):
                 cols_to_show = [c for c in [
                     "SqFtTotLiving", "Bedrooms", "Bathrooms", "BldgGrade", "HouseAge",
                     "dist_to_park", "dist_to_school", "dist_to_hospital",
@@ -737,14 +831,15 @@ if predict_clicked:
 
             st.caption(
                 "⚠ Estimasi bersifat indikatif berdasarkan data historis (2014–2015) "
-                "dan tidak menggantikan penilaian appraisal profesional."
+                "dan tidak menggantikan penilaian appraisal profesional. "
+                "Analisis fitur menunjukkan kontribusi relatif terhadap prediksi harga."
             )
 
         except Exception as pred_err:
             st.error(f"Kesalahan prediksi: {pred_err}")
 
 # ============================================================
-# 8. FOOTER
+# 9. FOOTER
 # ============================================================
 st.markdown("""
 <div class="footer-bar">
