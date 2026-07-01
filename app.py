@@ -363,7 +363,7 @@ st.markdown("""
 # 3. FUNGSI UNTUK FEATURE IMPORTANCE
 # ============================================================
 def get_feature_importance(model, feature_names):
-    """Menghitung feature importance dari koefisien regresi"""
+    """Menghitung feature importance dari koefisien regresi (Global)"""
     coefs = model.coef_
     feature_importance = pd.DataFrame({
         'fitur': feature_names,
@@ -372,6 +372,25 @@ def get_feature_importance(model, feature_names):
     })
     feature_importance = feature_importance.sort_values('absolute', ascending=False)
     feature_importance['persentase'] = (feature_importance['absolute'] / feature_importance['absolute'].sum()) * 100
+    return feature_importance
+
+def get_dynamic_feature_importance(model, feature_names, input_data):
+    """Menghitung dampak fitur dinamis spesifik dari input aktual (Lokal)"""
+    coefs = model.coef_
+    input_values = input_data.iloc[0].values
+    contributions = coefs * input_values
+    
+    feature_importance = pd.DataFrame({
+        'fitur': feature_names,
+        'koefisien': contributions,
+        'absolute': np.abs(contributions)
+    })
+    feature_importance = feature_importance.sort_values('absolute', ascending=False)
+    total_abs = feature_importance['absolute'].sum()
+    if total_abs > 0:
+        feature_importance['persentase'] = (feature_importance['absolute'] / total_abs) * 100
+    else:
+        feature_importance['persentase'] = 0.0
     return feature_importance
 
 def create_feature_impact_chart(feature_imp, top_n=10):
@@ -528,12 +547,33 @@ def load_assets():
     features = joblib.load("daftar_fitur.pkl")
     return model, features
 
+@st.cache_data
+def load_data():
+    df = pd.read_csv("dataset_properti_final_skripsi.csv")
+    import json
+    with open("zip_mapping.json", "r") as f:
+        zip_map = json.load(f)
+    return df, zip_map
+
 assets_ready = True
 try:
     model, features_final = load_assets()
+    df_properti, zip_mapping = load_data()
+    
     all_zipcodes = sorted([
         col.replace("ZipCode_", "") for col in features_final if col.startswith("ZipCode_")
     ])
+    
+    city_to_zips = {}
+    for z, meta in zip_mapping.items():
+        if z in all_zipcodes:
+            c = meta["city"]
+            if c not in city_to_zips:
+                city_to_zips[c] = []
+            city_to_zips[c].append(z)
+            
+    all_cities = sorted(list(city_to_zips.keys()))
+    
     # Simpan feature importance untuk digunakan
     feature_importance = get_feature_importance(model, features_final)
 except Exception as e:
@@ -627,8 +667,15 @@ with col5:
 with col6:
     hospital = st.number_input("Jarak ke RS (km)",         min_value=0.0, max_value=50.0, value=1.2, step=0.1)
 
-selected_zip = st.selectbox("Kode Pos (ZipCode)", all_zipcodes,
-                             help="Lokasi properti dalam wilayah King County")
+st.markdown('<div class="gold-divider"></div>', unsafe_allow_html=True)
+st.markdown('<p class="section-label">🏙 &nbsp;Pilih Wilayah / Kota</p>', unsafe_allow_html=True)
+
+col_city, col_zip = st.columns(2, gap="medium")
+with col_city:
+    selected_city = st.selectbox("Wilayah (City)", all_cities, help="Pilih kota/wilayah di King County")
+with col_zip:
+    available_zips = sorted(city_to_zips[selected_city])
+    selected_zip = st.selectbox("Kode Pos Spesifik (ZIP Code)", available_zips, help="Pilih ZIP code di wilayah tersebut")
 
 st.markdown("<br>", unsafe_allow_html=True)
 predict_clicked = st.button(
@@ -644,6 +691,12 @@ if predict_clicked:
     with st.spinner("Menghitung valuasi properti …"):
         input_data = pd.DataFrame(0, index=[0], columns=features_final)
 
+        # Cari metadata dari dataset untuk ZIP code yang dipilih untuk menghapus hardcoding
+        zip_data = df_properti[df_properti['ZIPCODE'] == float(selected_zip)]
+        dynamic_defaults = zip_data.median(numeric_only=True).to_dict() if not zip_data.empty else {}
+
+        target_dummy = f"ZipCode_{selected_zip}"
+        
         mapping = {
             "SqFtTotLiving":   sqft,
             "Bedrooms":        bedrooms,
@@ -654,24 +707,15 @@ if predict_clicked:
             "dist_to_school":  school,
             "dist_to_hospital":hospital,
             "Space_Quality":   sqft * grade,
+            "ZIPCODE":         int(selected_zip),
+            target_dummy:      1
         }
-        for col, val in mapping.items():
-            if col in input_data.columns:
-                input_data[col] = val
-
-        defaults = {
-            "SqFtLot": 5000, "NbrLivingUnits": 1,
-            "LandVal": 150000, "ImpsVal": 200000,
-            "zhvi_px": 400000, "AdjSalePrice": 500000,
-            "lat": 47.5, "lon": -122.2, "ZIPCODE": int(selected_zip),
-        }
-        for col, val in defaults.items():
-            if col in input_data.columns:
-                input_data[col] = val
-
-        target_dummy = f"ZipCode_{selected_zip}"
-        if target_dummy in input_data.columns:
-            input_data[target_dummy] = 1
+        
+        for col in features_final:
+            if col in mapping:
+                input_data[col] = mapping[col]
+            elif col in dynamic_defaults:
+                input_data[col] = dynamic_defaults[col]
 
         try:
             harga_final = np.exp(model.predict(input_data)[0])
@@ -718,9 +762,12 @@ if predict_clicked:
             st.markdown('<div class="gold-divider"></div>', unsafe_allow_html=True)
             st.markdown('<p class="section-label">📊 &nbsp;Analisis Dampak Fitur Terhadap Harga</p>', unsafe_allow_html=True)
             
+            # Hitung impact dinamis spesifik untuk input ini
+            feature_importance_dynamic = get_dynamic_feature_importance(model, features_final, input_data)
+            
             # Filter fitur yang relevan (bukan dummies)
-            relevant_features = feature_importance[
-                ~feature_importance['fitur'].str.startswith('ZipCode_')
+            relevant_features = feature_importance_dynamic[
+                ~feature_importance_dynamic['fitur'].str.startswith('ZipCode_')
             ].head(20)
             
             # Tabs untuk berbagai visualisasi

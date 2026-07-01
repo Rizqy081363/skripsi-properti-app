@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoAPI POC — US Region & State Metadata Explorer</title>
+    <meta name="description" content="Proof of Concept: Fetching US geographical metadata by state/region using public APIs (Zippopotam.us)">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- HERO SECTION                                    -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <header class="hero" id="hero">
+        <div class="hero__orb hero__orb--1"></div>
+        <div class="hero__orb hero__orb--2"></div>
+        <div class="hero__orb hero__orb--3"></div>
+        <div class="hero__content">
+            <span class="hero__eyebrow">Proof of Concept — Public API Validation</span>
+            <h1 class="hero__title">
+                US Region <span class="hero__accent">&</span> State<br>
+                <span class="hero__gradient-text">Metadata Explorer</span>
+            </h1>
+            <p class="hero__subtitle">
+                Validating <strong>Zippopotam.us</strong> public API for fetching geographical metadata 
+                (cities, ZIP codes, coordinates) by US state — no API key required.
+            </p>
+            <div class="hero__badges">
+                <span class="badge badge--green"><span class="badge__dot"></span>Free & Keyless</span>
+                <span class="badge badge--blue"><span class="badge__dot"></span>50 States Covered</span>
+                <span class="badge badge--amber"><span class="badge__dot"></span>JSON Response</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- MAIN CONTROL PANEL                              -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <main class="container">
+
+        <!-- SEARCH PANEL -->
+        <section class="panel panel--search" id="search-panel">
+            <div class="panel__header">
+                <div class="panel__icon">🗺️</div>
+                <div>
+                    <h2 class="panel__title">Select a US State</h2>
+                    <p class="panel__desc">Choose a state to fetch all associated cities & ZIP codes from the API</p>
+                </div>
+            </div>
+
+            <div class="search-controls">
+                <div class="select-wrapper" id="state-select-wrapper">
+                    <label for="state-select" class="select-label">State / Territory</label>
+                    <select id="state-select" class="select-input">
+                        <option value="" disabled selected>— Select a US State —</option>
+                    </select>
+                    <div class="select-arrow">
+                        <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+                            <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <button id="fetch-btn" class="btn btn--primary" disabled>
+                    <span class="btn__icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                    </span>
+                    <span class="btn__text">Fetch Metadata</span>
+                    <span class="btn__loader" id="btn-loader"></span>
+                </button>
+            </div>
+
+            <!-- City filter (appears after fetching) -->
+            <div class="city-filter" id="city-filter" style="display:none;">
+                <label for="city-search" class="select-label">Filter Cities</label>
+                <input type="text" id="city-search" class="text-input" placeholder="Type to filter cities...">
+            </div>
+        </section>
+
+        <!-- STATUS BAR -->
+        <div class="status-bar" id="status-bar" style="display:none;">
+            <div class="status-bar__inner">
+                <div class="status-bar__icon" id="status-icon">⏳</div>
+                <div class="status-bar__text" id="status-text">Fetching data...</div>
+                <div class="status-bar__meta" id="status-meta"></div>
+            </div>
+            <div class="status-bar__progress" id="status-progress"></div>
+        </div>
+
+        <!-- API RESPONSE RAW VIEW -->
+        <section class="panel panel--raw" id="raw-panel" style="display:none;">
+            <div class="panel__header panel__header--collapsible" id="raw-toggle">
+                <div class="panel__icon">📡</div>
+                <div>
+                    <h2 class="panel__title">Raw API Response</h2>
+                    <p class="panel__desc">Direct JSON output from Zippopotam.us</p>
+                </div>
+                <div class="panel__chevron" id="raw-chevron">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+            </div>
+            <div class="raw-content" id="raw-content">
+                <div class="raw-url" id="raw-url"></div>
+                <pre class="raw-json" id="raw-json"></pre>
+            </div>
+        </section>
+
+        <!-- STATS OVERVIEW -->
+        <section class="stats-grid" id="stats-grid" style="display:none;">
+            <div class="stat-card" id="stat-state">
+                <div class="stat-card__icon">🏛️</div>
+                <div class="stat-card__value" id="stat-state-val">—</div>
+                <div class="stat-card__label">State</div>
+            </div>
+            <div class="stat-card" id="stat-abbr">
+                <div class="stat-card__icon">🏷️</div>
+                <div class="stat-card__value" id="stat-abbr-val">—</div>
+                <div class="stat-card__label">Abbreviation</div>
+            </div>
+            <div class="stat-card" id="stat-cities">
+                <div class="stat-card__icon">🏙️</div>
+                <div class="stat-card__value" id="stat-cities-val">—</div>
+                <div class="stat-card__label">Cities Found</div>
+            </div>
+            <div class="stat-card" id="stat-zips">
+                <div class="stat-card__icon">📮</div>
+                <div class="stat-card__value" id="stat-zips-val">—</div>
+                <div class="stat-card__label">ZIP Codes</div>
+            </div>
+            <div class="stat-card" id="stat-lat">
+                <div class="stat-card__icon">📍</div>
+                <div class="stat-card__value" id="stat-lat-val">—</div>
+                <div class="stat-card__label">Avg. Latitude</div>
+            </div>
+            <div class="stat-card" id="stat-lon">
+                <div class="stat-card__icon">🧭</div>
+                <div class="stat-card__value" id="stat-lon-val">—</div>
+                <div class="stat-card__label">Avg. Longitude</div>
+            </div>
+        </section>
+
+        <!-- CITIES TABLE -->
+        <section class="panel panel--table" id="table-panel" style="display:none;">
+            <div class="panel__header">
+                <div class="panel__icon">📋</div>
+                <div>
+                    <h2 class="panel__title">City & ZIP Code Details</h2>
+                    <p class="panel__desc" id="table-desc">All cities and their associated metadata</p>
+                </div>
+                <div class="table-count" id="table-count">0 results</div>
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table" id="data-table">
+                    <thead>
+                        <tr>
+                            <th class="th-sortable" data-sort="index">#</th>
+                            <th class="th-sortable" data-sort="city">City / Place</th>
+                            <th class="th-sortable" data-sort="zip">ZIP Code</th>
+                            <th class="th-sortable" data-sort="lat">Latitude</th>
+                            <th class="th-sortable" data-sort="lon">Longitude</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- CONCLUSION -->
+        <section class="panel panel--conclusion" id="conclusion-panel" style="display:none;">
+            <div class="panel__header">
+                <div class="panel__icon">✅</div>
+                <div>
+                    <h2 class="panel__title">POC Validation Summary</h2>
+                    <p class="panel__desc">Assessment of API capabilities for integration</p>
+                </div>
+            </div>
+            <div class="conclusion-body" id="conclusion-body"></div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <p>POC — Zippopotam.us API Validation &bull; No API Key Required &bull; ODbL 1.0 License</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
